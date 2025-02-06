@@ -10,8 +10,6 @@ coverImage:
 ogImage: "/social-card.avif"
 ---
 
-# Emby+302重定向
-
 ## 1.Rclone挂载alist
 
 ### 1.1安装Rclone
