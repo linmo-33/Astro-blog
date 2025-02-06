@@ -277,13 +277,13 @@ emby2alist github项目地址：[https://github.com/chen3861229/embyExternalUrl/
 
    访问ip:8096 进入emby完成基础配置后 点击设置-(高级)API密钥-新API密钥 随意填写应用程序名称 从而生成一个API密钥，并记录密钥
 
-   ![image-20250110092041011](https://cdn.jsdelivr.net/gh/linmo-33/imgs/img/202501100920135.png)
+   ![Astro](https://cdn.jsdelivr.net/gh/linmo-33/imgs/img/202501100920135.png)
 
 2. alist API密钥
 
    访问ip:5244登录，之后点击管理-设置-其他 复制令牌
 
-   ![image-20250110093525105](https://cdn.jsdelivr.net/gh/linmo-33/imgs/img/202501100935211.png)
+   ![Astro](https://cdn.jsdelivr.net/gh/linmo-33/imgs/img/202501100935211.png)
 
 3. 修改nginx配置文件
 
