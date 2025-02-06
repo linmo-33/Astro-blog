@@ -1,9 +1,10 @@
 ---
-title: "Emby部署及302重定向"
+title: Emby部署及302重定向
 description: 实现Emby播放走直链，不消耗本地流量
-publishDate: 2025-01-10 06:43:27   
-tags: ["emby"]
-ogImage: "/social-card.avif"
+publishDate: 2025-01-10 06:43:27
+tags:
+  - emby
+ogImage: /social-card.avif
 ---
 
 ## 1.Rclone挂载alist
@@ -181,7 +182,7 @@ sudo journalctl -xe
 mkdir /home/emby/config
 ```
 
-### 2. 2新建docker-compose文件
+### 2.2新建docker-compose文件
 
 ```bash
 services:
