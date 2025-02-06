@@ -1,16 +1,3 @@
----
-title: Emby部署及302重定向  
-date: 2025-01-10 06:43:27   
-categories: 折腾日记
-tags: 
-keywords: Emby
-description: 实现Emby播放走直链，不消耗本地流量
-top_img: https://cdn.jsdelivr.net/gh/linmo-33/imgs/img/202501101015644.png
-cover: https://cdn.jsdelivr.net/gh/linmo-33/imgs/img/202501101015644.png
----
-
-# Emby+302重定向
-
 ## 1.Rclone挂载alist
 
 ### 1.1安装Rclone
