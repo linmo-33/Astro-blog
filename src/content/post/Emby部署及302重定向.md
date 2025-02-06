@@ -3,10 +3,6 @@ title: "Emby部署及302重定向"
 description: 实现Emby播放走直链，不消耗本地流量
 publishDate: 2025-01-10 06:43:27   
 tags: ["emby"]
-top_img: https://cdn.jsdelivr.net/gh/linmo-33/imgs/img/202501101015644.png
-coverImage: 
-  src: "https://cdn.jsdelivr.net/gh/linmo-33/imgs/img/202501101015644.png"
-  alt: "封面图"
 ogImage: "/social-card.avif"
 ---
 
