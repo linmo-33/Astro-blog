@@ -49,7 +49,7 @@ pnpm run dev
 如果项目创建过程中已选择了`pinia`特性则可跳过该步骤，如果没有，则需要手动安装`pinia`并创建自定义Store。
 
 ```bash
-perl 代码解读复制代码npm install --registry=https://registry.npmmirror.com pinia@2.0.33
+npm install --registry=https://registry.npmmirror.com pinia@2.0.33
 或
 yarn add pinia@2.0.33
 或
@@ -151,7 +151,7 @@ npx tailwindcss init -p
 **tailwind.config.js**
 
 ```js
-css 代码解读复制代码/** @type {import('tailwindcss').Config} */
+/** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: "class",
   corePlugins: {
@@ -170,7 +170,7 @@ module.exports = {
 **postcss.config.js**
 
 ```js
-css 代码解读复制代码export default {
+export default {
   plugins: {
     tailwindcss: {},
     autoprefixer: {},
