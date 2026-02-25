@@ -1,15 +1,14 @@
 ---
-title: Emby部署及302重定向
-description: 实现Emby播放走直链，不消耗本地流量
-publishDate: 2025-01-10 06:43:27
+title: 使用 Rclone + Emby + OpenList 实现 OneDrive 302 直链播放
+description: Emby 刮削正常，播放时通过 302 重定向直接从微软 CDN 拉流，VPS 几乎不消耗带宽。
+publishDate: 2026-02-25
 tags:
   - emby
 ogImage: /social-card.avif
 ---
+## 1. Rclone 挂载 OneDrive
 
-## 1.Rclone挂载alist
-
-### 1.1安装Rclone
+### 1.1 安装 Rclone
 
 ```bash
 sudo -v ; curl https://rclone.org/install.sh | sudo bash
@@ -22,159 +21,96 @@ sudo -v ; curl https://rclone.org/install.sh | sudo bash
 ```bash
 # 进入rclone设置
 rclone config
-# 选择新远程
-No remotes found, make a new one?
-n) New remote
-s) Set configuration password
-q) Quit config
-n/s/q> n #这里选择n
-# 设置名字
-name> 189Cloud
-Type of storage to configure.
-Choose a number from below, or type in your own value
-[snip]
-XX / WebDAV
-   \ "webdav"
-[snip]
-Storage> webdav #这里输入webdav，也可以选择有个webdav的字段XX
-# 设置远程地址url http://your_alist_ip:port/dav
-URL of http host to connect to
-Choose a number from below, or type in your own value
- 1 / Connect to example.com
-   \ "https://example.com"
-url> http://127.0.0.1:8080/dav #这里设置alist的地址和端口，后面要带dav,http://#.#.#.#:5244/dav/，#号记得替换为ip
-# 这里选6 选择带有other的字段
-Name of the WebDAV site/service/software you are using
-Choose a number from below, or type in your own value
- 1 / Fastmail Files
-   \ (fastmail)
- 2 / Nextcloud
-   \ (nextcloud)
- 3 / Owncloud
-   \ (owncloud)
- 4 / Sharepoint Online, authenticated by Microsoft account
-   \ (sharepoint)
- 5 / Sharepoint with NTLM authentication, usually self-hosted or on-premises
-   \ (sharepoint-ntlm)
- 6 / Other site/service or software
-   \ (other)
-vendor> 6    
-# 设置远程账号
-User name
-user> admin #alist的账号
-# 设置远程密码
-Password.
-y) Yes type in my own password
-g) Generate random password
-n) No leave this optional password blank
-y/g/n> y #这里输入y
-Enter the password: #alist密码，密码是看不到的
-password:
-Confirm the password: #再次输入密码
-password:
-# 这里直接回车即可
-Bearer token instead of user/pass (e.g. a Macaroon)
-bearer_token>
-
-# 这里可能会问你是默认还是高级
-Edit advanced config?
-y) Yes
-n) No (default)
-y/n> n  #选择n
-
-#后面的回车即可
-# 你的远程信息
---------------------
-[remote]
-type = webdav
-url = http://#.#.#.#:5244/dav/
-vendor = Other
-user = admin
-pass = *** ENCRYPTED ***
---------------------
-# 确认
-y) Yes this is OK
-e) Edit this remote
-d) Delete this remote
-y/e/d> y #输入y即可，
-# 最后按q退出设置
 ```
 
-###  1.3 fuse安装
+按以下步骤操作：
+
+* n → New remote
+* name → 随便起，例如 onedrive
+* Storage → 输入onedrive对应的标号
+* 输入之前保存的应用程序 `Client ID` 和 `Client secret`，选择对应地区。
+* advanced config 和 auto config 选no
+* config token输入之前在windows rclone获取的access_token
+* 确认对应配置
+
+### 1.3 fuse安装
 
 ```bash
 apt-get install fuse3
 ```
 
-###  1.4挂载OneDrive到本地
-
-创建服务配置文件：
+### 1.4 创建挂载点并启动服务
 
 ```bash
-sudo vim /etc/systemd/system/rcloned.service
+sudo mkdir -p /home/onedrive
+sudo chown $USER:$USER /home/onedrive
+```
+
+创建 systemd 服务文件：
+
+```bash
+sudo nano /etc/systemd/system/rclone-onedrive.service
 ```
 
 保存以下内容
 
 ```bash
 [Unit]
-Description=Rclone Daemon
+Description=Rclone OneDrive Mount via OpenList
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=forking
-ExecStart=/usr/bin/rclone mount onewebDav: /home/onedrive --network-mode --no-check-certificate --allow-other --allow-non-empty --header "Referer:" --vfs-cache-mode full --buffer-size 512M --vfs-read-chunk-size 64M --vfs-read-chunk-size-limit 1G --vfs-cache-max-size 10G --cache-dir /home/rclone/cahe --cache-info-age 4h  --timeout 2h --drive-chunk-size 64M --attr-timeout 72h --log-level ERROR --log-file /home/rclone/log/rclone-onedrive.log --umask 000 --use-mmap --daemon
-ExecStop=/bin/fusermount -quz /home/onedrive
-Restart=on-abort
-RestartSec=10
+Type=notify
+ExecStart=/usr/bin/rclone mount onedrive: /home/onedrive \
+  --config /home/$USER/.config/rclone/rclone.conf \
+  --allow-other \
+  --vfs-cache-mode full \
+  --vfs-cache-max-size 50G \
+  --vfs-cache-max-age 720h \
+  --vfs-read-chunk-size 128M \
+  --vfs-read-chunk-size-limit 1G \
+  --buffer-size 128M \
+  --dir-cache-time 168h \
+  --poll-interval 1m \
+  --onedrive-no-versions \
+  --transfers 8 \
+  --checkers 16 \
+  --low-level-retries 10 \
+  --retries 5 \
+  --log-level INFO \
+  --log-file /var/log/rclone-onedrive.log
 
-[Install]
-WantedBy=multi-user.targetsermount -quz /home/onedrive
+ExecStop=/bin/fusermount -u -z /home/onedrive
 Restart=on-failure
 RestartSec=10
+TimeoutStartSec=300
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-**注:此挂载文件夹的名字需要与 Alist 中的盘名相同**
-
-
-
-重新加载 Systemd 配置：
+应用并启动：
 
 ```bash
 sudo systemctl daemon-reload
+sudo systemctl enable --now rclone-onedrive.service
+sudo systemctl status rclone-onedrive.service
 ```
 
-重新启用服务：
+检查挂载：
 
 ```bash
-sudo systemctl enable rcloned.service
+df -h /home/onedrive
+ls /home/onedrive/emby/动漫   # 应该能看到文件
 ```
 
-启动服务
+### 1.5 常见坑点
 
-```bash
-sudo systemctl start rcloned.service
-```
+* 卡在 “vfs cache miss”：说明缓存没生效 → 确认 --vfs-cache-mode full 和缓存目录有写权限
+* 报错 “transport endpoint is not connected”：重启服务或 fusermount -u /home/onedrive
 
-检查服务状态：
-
-```bash
-sudo systemctl status rcloned.service
-```
-
-查看详细日志：
-
-```bash
-sudo journalctl -xe
-```
-
-
-
-## 2.安装Emby
+## 2.Emby 部署（Docker）
 
 ### 2.1创建 Emby 数据目录
 
@@ -185,147 +121,287 @@ mkdir /home/emby/config
 ### 2.2新建docker-compose文件
 
 ```bash
+version: "3.8"
 services:
   emby:
-    image: lovechen/embyserver:latest
-    container_name: emby  # 容器名称
+    image: emby/embyserver:latest           # 官方最新版
+    container_name: emby
     restart: unless-stopped
-    security_opt:
-      - apparmor:unconfined
-    cap_add:
-      - SYS_ADMIN
+    network_mode: host                      # 简化端口映射
     volumes:
-      - /home/emby/config:/config  # 挂载配置文件路径
-      - /home/onedrive:/movies  # 挂载下载路径
+      - /home/emby/config:/config
+      - /home/onedrive:/mnt/share:ro        # 只读挂载，防止 Emby 误写
     environment:
-      - TZ=Asia/Shanghai  # 时区设置
-      - UID=0  # 用户 ID
-      - GID=0  # 组 ID
-      - GIDLIST=0  # GID 列表
-    ports:
-      - 8096:8096
+      - TZ=Asia/Shanghai
+      - UID=0
+      - GID=0
+    # ports:                                # network_mode: host 后可省略
+    #   - 8096:8096
+    #   - 8920:8920
 ```
+
+启动：
+
+```bash
+docker compose up -d
+```
+
+### 2.3 Emby 媒体库设置
+
+* 不要添加根目录 /mnt/share
+* 按分类添加子目录：
+
+  * 动漫：/mnt/share/emby/动漫
+  * 电影：/mnt/share/emby/电影
+* 关闭“实时监控文件夹变化”
+* 关闭“下载图像/字幕到媒体文件夹”
+* 手动扫描库
+
+这样 Emby 看到的 Path 就是 /mnt/share/emby/动漫/xxx.mkv
 
 ## 3.配置302重定向
 
-emby2alist github项目地址：[https://github.com/chen3861229/embyExternalUrl/tree/main/emby2Alist](https://www.nodeseek.com/jump?to=https%3A%2F%2Fgithub.com%2Fchen3861229%2FembyExternalUrl%2Ftree%2Fmain%2Femby2Alist)
-
-### 3.1下载项目
-
-目录结构：
+### 3.1 使用 MediaLinker
 
 ```bash
-/root/emby2Alist
-├── docker
-│   ├── docker-compose.yml
-│   ├── nginx-emby.syno.json
-│   └── nginx-jellyfin.syno.json
-├── nginx
-│   ├── conf.d
-│   │   ├── api
-│   │   │   ├── alist-api.js
-│   │   │   └── emby-api.js
-│   │   ├── common
-│   │   │   ├── events.js
-│   │   │   ├── live-util.js
-│   │   │   ├── periodics.js
-│   │   │   ├── url-util.js
-│   │   │   └── util.js
-│   │   ├── config
-│   │   │   ├── constant-common.js
-│   │   │   ├── constant-ext.js
-│   │   │   ├── constant-mount.js
-│   │   │   ├── constant-nginx.js
-│   │   │   ├── constant-pro.js
-│   │   │   ├── constant-strm.js
-│   │   │   ├── constant-symlink.js
-│   │   │   └── constant-transcode.js
-│   │   ├── constant.js
-│   │   ├── docs
-│   │   │   ├── test-data.md
-│   │   │   └── UA.txt
-│   │   ├── emby.conf
-│   │   ├── emby.js
-│   │   ├── exampleConfig
-│   │   │   ├── constant-all.js
-│   │   │   └── constant-main.js
-│   │   ├── includes
-│   │   │   ├── http.conf
-│   │   │   ├── https.conf
-│   │   │   ├── proxy-header.conf
-│   │   │   └── server-group.conf
-│   │   └── modules
-│   │       ├── emby-example.js
-│   │       ├── emby-items.js
-│   │       ├── emby-live.js
-│   │       ├── emby-search.js
-│   │       ├── emby-system.js
-│   │       ├── emby-transcode.js
-│   │       ├── emby-v-media.js
-│   │       └── ngx-ext.js
-│   └── nginx.conf
-└── README.md
-
+services:
+  medialinker:
+    image: thsrite/medialinker:latest
+    container_name: medialinker
+    restart: unless-stopped
+    volumes:
+      - ./data:/opt/
+    environment:
+      - AUTO_UPDATE=true
+      - SERVER=emby
+      - NGINX_PORT=8091
+    network_mode: host
 ```
 
-### 3.2修改相关配置
+启动后访问 http://你的IP:8091（不再用 8096）
+
+### 3.2修改 MediaLinker 配置
 
 1. emby API密钥
 
    访问ip:8096 进入emby完成基础配置后 点击设置-(高级)API密钥-新API密钥 随意填写应用程序名称 从而生成一个API密钥，并记录密钥
-
-
-
 2. alist API密钥
 
    访问ip:5244登录，之后点击管理-设置-其他 复制令牌
-
-
 3. 修改nginx配置文件
 
-   修改`/emby2Alist/nginx/conf.d/constant.js`
+    编辑 `./data/config/constant.js`
 
-   ```bash
-   // 这里默认 emby/jellyfin 的地址是宿主机,要注意 iptables 给容器放行端口
-   const embyHost = "http://容器ip地址:8096";
-   
-   // emby/jellyfin api key, 在 emby/jellyfin 后台设置
-   const embyApiKey = "上边记录的API密钥";
-   
-   // 挂载工具 rclone/CD2 多出来的挂载目录, 例如将 od,gd 挂载到 /mnt 目录下: /mnt/onedrive /mnt/gd ,那么这里就填写 /mnt
-   const mediaMountPath = ["/movies"];
+   ```apex
+   // Emby 看到的路径前缀（根据上面库设置）
+   const mediaMountPath = [
+      "/mnt/share/emby/",
+      "/mnt/share/emby"
+   ];
+   //其余配置依次填入
    ```
 
-   **注意：**
-
-   这一项修改原则为：
-
-   挂载路径为/home/onedrive， alist路径为/ondrive
-
-   emby中文件存放目录为/movies/xxx.mp4
-   alist中文件为/xxx.mp4
-   emby相比alist中多出的部分就是填入的部分
-
-   
-
-   修改`/emby2Alist/nginx/conf.d/config下的constant-mount.js`
-
-   ```bash
-   // rclone/CD2 挂载的 alist 文件配置,根据实际情况修改下面的设置
-   // 访问宿主机上 5244 端口的 alist 地址, 要注意 iptables 给容器放行端口
-   const alistAddr = "http://容器ip地址:5244";
-   
-   // alist token, 在 alist 后台查看
-   const alistToken = "记录的alist密钥";
-   
-   // alist 公网地址,用于需要 alist server 代理流量的情况,按需填写
-   const alistPublicAddr = "https://xxx.xxx";
-   ```
+保存后重载容器
 
 ### 3.3 测试
 
-完成以上所有步骤后重启nginx-emby，播放前请将emby的播放中互联网质量调至最高、关闭转码
-**注意：现在需要访问的是服务器ip:8091，而不再是8096**
+1. 用 Yamby / 浏览器访问 http://你的IP:8091
+2. 播放一部片子
+3. 查看 MediaLinker 日志
 
-当播放时服务器未出现大流量或查看日志`/emby2Alist/nginx/log/error.log`中出现网盘相关的域名即可确认成功走直链
+    `docker logs -f medialinker | grep -i "redirect\|alist\|path\|original"`
 
+    看到类似：
+
+    `redirect to: https://pan.zerovv.top/onedrive/emby/动漫/..`
+   且没有 use original link → 成功！
+4. 确认流量：播放时 VPS 上传带宽接近 0（iftop / vnstat）
+
+## 4 qBittorrent 自动上传到 OneDrive
+
+### 4.1 qBittorrent部署
+```bash
+version: "3.8"
+services:
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - WEBUI_PORT=8080
+      - TORRENTING_PORT=45481
+    volumes:
+      - /home/qbittorrent:/config
+      - /home/downloads:/downloads
+      - /usr/bin/rclone:/usr/bin/rclone:ro
+      - /home/qbittorrent/rclone_config:/config/.config/rclone
+
+    ports:
+      - 8080:8080
+      - 45481:45481
+      - 45481:45481/udp
+    restart: unless-stopped
+```
+启动：
+
+`docker compose up -d`
+
+### 4.2 上传脚本
+
+创建脚本：
+
+```bash
+sudo mkdir -p /home/scripts
+sudo nano /home/scripts/qb-finish.sh
+```
+
+```bash
+#!/bin/bash
+
+# --- 1. 参数配置 ---
+torrent_name=$1
+content_dir=$2
+file_hash=$7
+torrent_category=$8  
+
+qb_username="admin"               # qbit用户名
+qb_password="123"          # qbit密码
+qb_web_url="http://localhost:8080"  # qbit webui地址 (docker映射后用localhost)
+log_dir="/config/log"        # **修改:** 统一的日志目录
+
+rclone_dest="onedrive"           # **修改:** 你的 rclone 远程名称
+rclone_path="qbit"             # **修改:** 你想上传到的网盘目录
+rclone_parallel="8"               # **修改:** 32太高了，8是更合理的值
+
+auto_del_flag="rclone"
+qb_version="5.1.2" 
+
+# --- 2. 你的选择 (做种 还是 自动清理?) ---
+# true  = 自动清理 (不能做种)
+# false = 可以做种 (不能自动清理，未来需手动删除)
+leeching_mode="true"
+# 是否做种智能判断逻辑：
+# 如果分类名称包含 "keep" 或 "seed" (不区分大小写)，则切换为做种模式
+# ${torrent_category,,} 的意思是把变量转为全小写，方便匹配
+if [[ "${torrent_category,,}" == *"keep"* ]] || [[ "${torrent_category,,}" == *"seed"* ]]; then
+    leeching_mode="false"
+    echo "[$(date)] MODE: Category matches 'keep/seed'. Switched to SEEDING mode." >> ${log_dir}/qb_upload.log
+else
+    echo "[$(date)] MODE: Standard mode. Will upload and DELETE." >> ${log_dir}/qb_upload.log
+fi
+
+# --- 3. 脚本正文  ---
+
+if [ ! -d ${log_dir} ]
+then
+        mkdir -p ${log_dir}
+fi
+
+# 统一的日志文件
+LOG_FILE="${log_dir}/qb_upload.log"
+
+# 检查 qb 版本 
+version=$(echo $qb_version | grep -P -o "([0-9]\.){2}[0-9]" | sed s/\\.//g)
+if [ ${version} -gt 404 ]; then qb_v="1"; else qb_v="2"; fi
+
+
+# 函数：登录 
+function qb_login(){
+    echo "[$(date)] SCRIPT: Logging in..." >> ${LOG_FILE}
+    if [ ${qb_v} == "1" ]; then
+        cookie=$(curl -i --silent --header "Referer: ${qb_web_url}" --data "username=${qb_username}&password=${qb_password}" "${qb_web_url}/api/v2/auth/login" | grep -P -o 'SID=\S{32}')
+    else
+        cookie=$(curl -i --silent --header "Referer: ${qb_web_url}" --data "username=${qb_username}&password=${qb_password}" "${qb_web_url}/login" | grep -P -o 'SID=\S{32}')
+    fi
+
+    if [ -n "${cookie}" ]; then
+        echo "[$(date)] SCRIPT: Login SUCCESS." >> ${LOG_FILE}
+    else
+        echo "[$(date)] SCRIPT: Login FAILED." >> ${LOG_FILE}
+    fi
+}
+
+# 函数：API操作 
+function qb_api_actions(){
+    # 1. 添加标签
+    echo "[$(date)] SCRIPT: Adding tag '${auto_del_flag}'" >> ${LOG_FILE}
+    if [ ${qb_v} == "1" ]; then
+        curl --silent -X POST -d "hashes=${file_hash}&tags=${auto_del_flag}" "${qb_web_url}/api/v2/torrents/addTags" --cookie "${cookie}"
+    else
+        curl --silent -X POST -d "hashes=${file_hash}&category=${auto_del_flag}" "${qb_web_url}/command/setCategory" --cookie ${cookie}
+    fi
+
+    # 2. 根据 leeching_mode 决定是否删除
+    if [ ${leeching_mode} == "true" ]; then
+        echo "[$(date)] SCRIPT: leeching_mode=true. Deleting local files & torrent..." >> ${LOG_FILE}
+        curl --silent -X POST -d "hashes=${file_hash}&deleteFiles=true" "${qb_web_url}/api/v2/torrents/delete" --cookie ${cookie}
+    else
+        echo "[$(date)] SCRIPT: leeching_mode=false. Keeping local files for seeding." >> ${LOG_FILE}
+    fi
+}
+
+# 函数：Rclone Copy 
+function rclone_copy(){
+    echo "[$(date)] RCLONE: Starting 'rclone copy' for ${type}: ${content_dir}" >> ${LOG_FILE}
+    if [ ${type} == "file" ]; then
+        # 运行 rclone，函数将返回 rclone 的退出代码
+        /usr/bin/rclone copy --transfers ${rclone_parallel} --log-file ${LOG_FILE} "${content_dir}" ${rclone_dest}:/${rclone_path}/
+    elif [ ${type} == "dir" ]; then
+        # 运行 rclone，函数将返回 rclone 的退出代码
+        /usr/bin/rclone copy --transfers ${rclone_parallel} --log-file ${LOG_FILE} "${content_dir}"/ ${rclone_dest}:/${rclone_path}/"${torrent_name}"/
+    fi
+}
+
+# --- 4. 主逻辑  ---
+
+echo "-----------------------------------" >> ${LOG_FILE}
+echo "[$(date)] SCRIPT: Triggered for ${torrent_name} (Hash: ${file_hash})" >> ${LOG_FILE}
+
+# 判断类型
+if [ -f "${content_dir}" ]; then
+   type="file"
+elif [ -d "${content_dir}" ]; then 
+   type="dir"
+else
+   echo "[$(date)] SCRIPT: ERROR! Path not found: ${content_dir}" >> ${LOG_FILE}
+   exit 1
+fi
+
+# 步骤 1: 尝试 Rclone Copy
+rclone_copy
+
+# 步骤 2: 检查 Rclone 的退出代码 ($?)
+if [ $? -eq 0 ]; then
+    # Rclone 成功 (退出代码 0)
+    echo "[$(date)] RCLONE: SUCCESS. Proceeding to QB API actions." >> ${LOG_FILE}
+
+    # 步骤 3: 只有在 Rclone 成功后，才执行登录和 API 操作
+    qb_login
+    if [ -n "${cookie}" ]; then
+        qb_api_actions
+    fi
+else
+    # Rclone 失败 (退出代码非 0)
+    echo "[$(date)] RCLONE: FAILED! (Exit code: $?). Aborting API actions." >> ${LOG_FILE}
+    echo "[$(date)] SCRIPT: Local files are KEPT. Rclone will retry on next run (if configured)." >> ${LOG_FILE}
+    # 脚本退出，不执行任何 qB API 操作，保留本地文件
+fi
+
+echo "[$(date)] SCRIPT: Finished." >> ${LOG_FILE}
+echo "-----------------------------------" >> ${LOG_FILE}
+
+```
+
+赋予权限：
+
+`chmod +x /home/scripts/qb-finish.sh`
+
+### 4.3 QB 中设置
+
+QB → 工具 → 选项 → 下载 → “Torrent 完成时运行外部程序”：
+
+`/bin/bash /home/scripts/qb-finish.sh "%N" "%F" "%R" "%D" "%C" "%Z" "%I" "%L"`
+
+至此搭建完成，现在拥有了自己的emby影院！
