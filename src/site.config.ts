@@ -44,7 +44,7 @@ export const menuLinks: { path: string; title: string }[] = [
 	},
 	{
 		path: "/me/",
-		title: "个人",
+		title: "导航",
 	},
 ];
 

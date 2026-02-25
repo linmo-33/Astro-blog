@@ -11,7 +11,7 @@ type LinkItem = {
 };
 
 const meta = {
-	title: "个人",
+	title: "导航",
 	description: "个人项目、站点与常用工具索引。",
 };
 
@@ -63,8 +63,14 @@ const sections: { title: string; items: LinkItem[] }[] = [
 			{
 				title: "ts.zerovv.top",
 				description: "Teamspek 服务器",
-				href: "https://ts.zerovv.top/",
+				href: "https://ts3.zerovv.top/",
 				tag: "Voice",
+			},
+			{
+				title: "mail.zerovv.top",
+				description: "临时邮箱。",
+				href: "https://mail.zerovv.top/",
+				tag: "Mail",
 			},
 		],
 	},
@@ -74,12 +80,11 @@ const isExternal = (href: string) => /^https?:\/\//.test(href);
 ---
 
 <PageLayout meta={meta}>
-	<h1 class="title mb-8">个人</h1>
+	<h1 class="title mb-8">导航</h1>
 
 	<div class="prose prose-sm prose-cactus max-w-none">
 		<p>
 			这页是一个“常用链接集”。我会把自己在做的一些项目、常逛的站点、以及日常用到的工具放在这里。
-			想起来就补一条，过时了就删掉。
 		</p>
 	</div>
 
